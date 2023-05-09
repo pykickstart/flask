@@ -338,6 +338,10 @@ class SecureCookieSessionInterface(SessionInterface):
         domain = self.get_cookie_domain(app)
         path = self.get_cookie_path(app)
 
+        # Add a "Vary: Cookie" header if the session was accessed at all.
+        if session.accessed:
+            response.vary.add("Cookie")
+
         # Delete case.  If there is no session we bail early.
         # If the session was modified to be empty we remove the
         # whole cookie.
@@ -345,6 +349,7 @@ class SecureCookieSessionInterface(SessionInterface):
             if session.modified:
                 response.delete_cookie(app.session_cookie_name,
                                        domain=domain, path=path)
+                response.vary.add("Cookie")
             return
 
         # Modification case.  There are upsides and downsides to
@@ -364,3 +369,4 @@ class SecureCookieSessionInterface(SessionInterface):
         response.set_cookie(app.session_cookie_name, val,
                             expires=expires, httponly=httponly,
                             domain=domain, path=path, secure=secure)
+        response.vary.add("Cookie")

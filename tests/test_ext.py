@@ -180,7 +180,7 @@ def test_no_error_swallowing(flaskext_broken):
     with pytest.raises(ImportError) as excinfo:
         import flask.ext.broken
 
-    assert excinfo.type is ImportError
+    assert excinfo.type in (ImportError, ModuleNotFoundError)
     if PY2:
         message = 'No module named missing_module'
     else:

@@ -11,6 +11,7 @@
 
 import pytest
 
+import os
 import re
 import uuid
 import time
@@ -196,7 +197,8 @@ def test_session():
 
     @app.route('/get')
     def get():
-        return flask.session['value']
+        v = flask.session.get("value", "None")
+        return v
 
     c = app.test_client()
     assert c.post('/set', data={'value': '42'}).data == b'value set'
@@ -333,7 +335,7 @@ def test_session_expiration():
     client = app.test_client()
     rv = client.get('/')
     assert 'set-cookie' in rv.headers
-    match = re.search(r'\bexpires=([^;]+)(?i)', rv.headers['set-cookie'])
+    match = re.search(r'(?i)\bexpires=([^;]+)', rv.headers['set-cookie'])
     expires = parse_date(match.group())
     expected = datetime.utcnow() + app.permanent_session_lifetime
     assert expires.year == expected.year
@@ -443,6 +445,90 @@ def test_session_cookie_setting():
     is_permanent = False
     app.config['SESSION_REFRESH_EACH_REQUEST'] = False
     run_test(expect_header=False)
+
+
+def test_session_vary_cookie():
+    app = flask.Flask("flask_test", root_path=os.path.dirname(__file__))
+    app.config.update(
+        TESTING=True,
+        SECRET_KEY="test key",
+    )
+    client = app.test_client()
+
+    @app.route("/set")
+    def set_session():
+        flask.session["test"] = "test"
+        return ""
+    @app.route("/get")
+    def get():
+        return flask.session.get("test")
+    @app.route("/getitem")
+    def getitem():
+        return flask.session["test"]
+    @app.route("/setdefault")
+    def setdefault():
+        return flask.session.setdefault("test", "default")
+
+    @app.route("/clear")
+    def clear():
+        flask.session.clear()
+        return ""
+
+    @app.route("/vary-cookie-header-set")
+    def vary_cookie_header_set():
+        response = flask.Response()
+        response.vary.add("Cookie")
+        flask.session["test"] = "test"
+        return response
+    @app.route("/vary-header-set")
+    def vary_header_set():
+        response = flask.Response()
+        response.vary.update(("Accept-Encoding", "Accept-Language"))
+        flask.session["test"] = "test"
+        return response
+    @app.route("/no-vary-header")
+    def no_vary_header():
+        return ""
+    def expect(path, header_value="Cookie"):
+        rv = client.get(path)
+        if header_value:
+            # The 'Vary' key should exist in the headers only once.
+            assert len(rv.headers.get_all("Vary")) == 1
+            assert rv.headers["Vary"] == header_value
+        else:
+            assert "Vary" not in rv.headers
+    expect("/set")
+    expect("/get")
+    expect("/getitem")
+    expect("/setdefault")
+    expect("/clear")
+    expect("/vary-cookie-header-set")
+    expect("/vary-header-set", "Accept-Encoding, Accept-Language, Cookie")
+    expect("/no-vary-header", None)
+
+
+def test_session_refresh_vary():
+    app = flask.Flask("flask_test", root_path=os.path.dirname(__file__))
+    app.config.update(
+        TESTING=True,
+        SECRET_KEY="test key",
+    )
+    client = app.test_client()
+
+    @app.route("/login")
+    def login():
+        flask.session["user_id"] = 1
+        flask.session.permanent = True
+        return ""
+
+    @app.route("/ignored")
+    def ignored():
+        return ""
+
+    rv = client.get("/login")
+    assert rv.headers["Vary"] == "Cookie"
+    rv = client.get("/ignored")
+    assert rv.headers["Vary"] == "Cookie"
 
 
 def test_flashes():
