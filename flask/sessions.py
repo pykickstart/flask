@@ -48,6 +48,11 @@ class SessionMixin(object):
     #: The default mixin implementation just hardcodes ``True`` in.
     modified = True
 
+    #: Some implementations can detect when session data is read or
+    #: written and set this when that happens. The mixin default is hard
+    #: coded to ``True``.
+    accessed = True
+
 
 def _tag(value):
     if isinstance(value, tuple):
@@ -111,13 +116,46 @@ session_json_serializer = TaggedJSONSerializer()
 
 
 class SecureCookieSession(CallbackDict, SessionMixin):
-    """Base class for sessions based on signed cookies."""
+    """Base class for sessions based on signed cookies.
+
+    This session backend will set the :attr:`modified` and
+    :attr:`accessed` attributes. It cannot reliably track whether a
+    session is new (vs. empty), so :attr:`new` remains hard coded to
+    ``False``.
+    """
+
+    #: When data is changed, this is set to ``True``. Only the session
+    #: dictionary itself is tracked; if the session contains mutable
+    #: data (for example a nested dict) then this must be set to
+    #: ``True`` manually when modifying that data. The session cookie
+    #: will only be written to the response if this is ``True``.
+    modified = False
+
+    #: When data is read or written, this is set to ``True``. Used by
+    # :class:`.SecureCookieSessionInterface` to add a ``Vary: Cookie``
+    #: header, which allows caching proxies to cache different pages for
+    #: different users.
+    accessed = False
+
 
     def __init__(self, initial=None):
         def on_update(self):
             self.modified = True
+            self.accessed = True
         CallbackDict.__init__(self, initial, on_update)
         self.modified = False
+
+    def __getitem__(self, key):
+        self.accessed = True
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        self.accessed = True
+        return super().get(key, default)
+
+    def setdefault(self, key, default=None):
+        self.accessed = True
+        return super().setdefault(key, default)
 
 
 class NullSession(SecureCookieSession):

@@ -192,12 +192,20 @@ def test_session():
 
     @app.route('/set', methods=['POST'])
     def set():
+        assert not flask.session.accessed
+        assert not flask.session.modified
         flask.session['value'] = flask.request.form['value']
+        assert flask.session.accessed
+        assert flask.session.modified
         return 'value set'
 
     @app.route('/get')
     def get():
+        assert not flask.session.accessed
+        assert not flask.session.modified
         v = flask.session.get("value", "None")
+        assert flask.session.accessed
+        assert not flask.session.modified
         return v
 
     c = app.test_client()
